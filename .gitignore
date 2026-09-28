@@ -1,0 +1,33 @@
+# ignore all .mat and .npy files 
+*.mat
+*.npy
+
+
+# ignore all data files except for .gitkeep
+data/*
+*.avi
+*.mp4
+*.jpg
+*.png
+*.csv
+# except for .gitkeep
+!data/.gitkeep
+
+# ignore all result files except for .gitkeep
+results/*
+!results/.gitkeep
+
+# 
+.vscode/
+
+#  ignore all pycache
+**/__pycache__/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# setup artifacts
+*.pyc
+*.egg-info/
+dist/
+build/
