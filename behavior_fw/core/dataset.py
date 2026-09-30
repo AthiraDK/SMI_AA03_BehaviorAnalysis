@@ -41,7 +41,7 @@ def create_experiments_metadata(path_dir_dataset ):
     df_metadata = pd.DataFrame(records)
     return df_metadata
 
-def select_exp_condition(df_metadata, genotype=None, protocol=None, medium=None):
+def select_exp_condition(df_metadata, genotype=None, protocol=None, medium=None, zone=None):
 
     df_meta = df_metadata.copy()
     if genotype:
@@ -50,6 +50,8 @@ def select_exp_condition(df_metadata, genotype=None, protocol=None, medium=None)
         df_meta = df_meta[df_meta["protocol"]==protocol]
     if medium:
         df_meta = df_meta[df_meta["medium"]==medium]
+    if zone:
+        df_meta = df_meta[df_meta["center"]==zone]
 
     return df_meta
 
