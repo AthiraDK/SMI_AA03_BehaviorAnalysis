@@ -180,4 +180,6 @@ def get_velocities(df_track: pd.DataFrame, fps: float = 60.0) -> pd.DataFrame:
     df["Vr_smooth"] = Vr_smooth
     df["Vt_smooth"] = np.sqrt(Vf_smooth**2 + Vs_smooth**2)
 
+    df["Vr_abs"] = df["Vr_smooth"].abs()
+
     return df

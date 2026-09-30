@@ -75,7 +75,9 @@ def plot_single_fly_trajectory(
     # 3. Reward Zone & Arena Circles
     zone_x = ds.get("zone_X", 0.0)
     zone_y = ds.get("zone_Y", 0.0)
-    zone_r = ds.get("zone_r", 10.0)
+    zone_r = ds.get("zone_r", 3.0)
+
+    print(zone_r, zone_x, zone_y)
 
     reward_zone = patches.Circle(
         (zone_x, zone_y),
