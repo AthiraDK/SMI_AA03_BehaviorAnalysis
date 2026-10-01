@@ -6,132 +6,116 @@ import numpy as np
 from behavior_fw.utils.psth import extract_experiment_psth
 
 
+from typing import Dict, List, Optional, Tuple
+import matplotlib.pyplot as plt
+import numpy as np
+
+
 def plot_single_experiment_psth(
-    psth_dict: dict, metric: str = "Vf_smooth", title: str = ""
-):
-    """Plots trial-by-trial heatmap and mean +/- SEM PSTH for a single fly."""
+    ds: Dict,
+    metrics: Optional[List[str]] = None,
+    window_sec: Tuple[float, float] = (-2.0, 4.0),
+    stim_duration_sec: float = 1.0,  # 1-second LED pulse
+    color: str = "#F16237",
+    cmap: str = "magma",
+) -> Tuple[plt.Figure, np.ndarray]:
+    """Plots trial-by-trial heatmap and mean +/- SEM PSTH traces for a single experiment using extract_experiment_psth."""
+    if metrics is None:
+        metrics = ["Vf_smooth"]
+
+    # 1. Extract full trial PSTH matrix for all metrics using helper function
+    psth_dict = extract_experiment_psth(
+        ds, metrics=metrics, window_sec=window_sec
+    )
+
     time_vec = psth_dict["time_vec"]
-    matrix = psth_dict[metric]
+    uid = ds.get("uid", "Single Fly")
+    n_rewards = ds.get("n_rewards", 0)
 
-    if matrix.shape[0] == 0:
-        print(f"[{title}] No valid reward events for {metric}.")
-        return None, None
-
-    fig, (ax_heat, ax_mean) = plt.subplots(
-        2,
-        1,
-        figsize=(7, 6),
-        sharex=True,
-        gridspec_kw={"height_ratios": [2, 1]},
-        dpi=300,
-        layout="constrained",
-    )
-
-    # 1. Trial Heatmap
-    im = ax_heat.imshow(
-        matrix,
-        aspect="auto",
-        extent=[time_vec[0], time_vec[-1], matrix.shape[0] + 0.5, 0.5],
-        cmap="viridis",
-        origin="upper",
-    )
-    ax_heat.axvline(0, color="red", linestyle="--", alpha=0.8, label="Reward Onset")
-    ax_heat.set_ylabel("Trial / Encounter #", fontsize=10)
-    ax_heat.set_title(
-        f"Reward PSTH - {metric.replace('_smooth', '')} ({title})", fontsize=12
-    )
-    fig.colorbar(im, ax=ax_heat, shrink=0.8, pad=0.02, label="Velocity")
-
-    # 2. Mean +/- SEM Response
-    mean_trace = np.nanmean(matrix, axis=0)
-    sem_trace = np.nanstd(matrix, axis=0) / np.sqrt(matrix.shape[0])
-
-    ax_mean.plot(time_vec, mean_trace, color="#1f77b4", linewidth=2, label="Mean")
-    ax_mean.fill_between(
-        time_vec,
-        mean_trace - sem_trace,
-        mean_trace + sem_trace,
-        color="#1f77b4",
-        alpha=0.3,
-        label="SEM",
-    )
-    ax_mean.axvline(0, color="red", linestyle="--", alpha=0.8)
-    ax_mean.set_xlabel("Time from Reward Onset (s)", fontsize=10)
-    ax_mean.set_ylabel("Mean Velocity", fontsize=10)
-    ax_mean.grid(True, linestyle="--", alpha=0.4)
-
-    return fig, (ax_heat, ax_mean)
-
-
-def plot_condition_psth_summary(
-    dataset: list,
-    condition_name: str = "Gr43a_ATR",
-    metrics: list = ["Vf_smooth", "Vr_smooth"],
-    window_sec: tuple = (-2.0, 4.0),
-):
-    """Pools PSTH traces across all experiments in a condition and plots mean +/- SEM."""
-    pooled_data = {m: [] for m in metrics}
-    time_vec = None
-
-    # Gather data across experiments
-    for exp in dataset:
-        psth_exp = extract_experiment_psth(
-            exp, metrics=metrics, window_sec=window_sec
-        )
-        time_vec = psth_exp["time_vec"]
-
-        for m in metrics:
-            if psth_exp[m].shape[0] > 0:
-                pooled_data[m].append(psth_exp[m])
-
+    # Setup grid: 1 heatmap row + 1 row per metric trace
+    n_rows = len(metrics) + 1
     fig, axes = plt.subplots(
-        len(metrics),
-        1,
-        figsize=(8, 3.5 * len(metrics)),
-        sharex=True,
+        nrows=n_rows,
+        ncols=1,
+        figsize=(6.5, 2.8 * n_rows),
         dpi=300,
+        sharex=True,
         layout="constrained",
     )
-    if len(metrics) == 1:
-        axes = [axes]
 
-    for i, m in enumerate(metrics):
-        ax = axes[i]
-        if not pooled_data[m]:
-            continue
+    if n_rows == 1:
+        axes = np.array([axes])
 
-        # Stack all trials across all flies: (N_total_trials, N_frames)
-        all_trials = np.vstack(pooled_data[m])
-        n_trials = all_trials.shape[0]
-        n_flies = len(pooled_data[m])
+    # -------------------------------------------------------------------------
+    # 1. Top Panel: Trial-by-Trial Heatmap (First Metric)
+    # -------------------------------------------------------------------------
+    heatmap_metric = metrics[0]
+    ax_heat = axes[0]
+    matrix = psth_dict.get(heatmap_metric, np.array([]))
 
-        mean_trace = np.nanmean(all_trials, axis=0)
-        sem_trace = np.nanstd(all_trials, axis=0) / np.sqrt(n_trials)
-
-        ax.plot(
-            time_vec,
-            mean_trace,
-            color="#2ca02c" if "Vr" in m else "#1f77b4",
-            linewidth=2,
-            label=f"Mean (N={n_flies} flies, n={n_trials} trials)",
+    if matrix.size > 0 and matrix.shape[0] > 0:
+        n_trials = matrix.shape[0]
+        im = ax_heat.imshow(
+            matrix,
+            aspect="auto",
+            extent=[time_vec[0], time_vec[-1], n_trials + 0.5, 0.5],
+            cmap=cmap,
+            origin="upper",
+            zorder=1,
         )
-        ax.fill_between(
-            time_vec,
-            mean_trace - sem_trace,
-            mean_trace + sem_trace,
-            color="#2ca02c" if "Vr" in m else "#1f77b4",
-            alpha=0.25,
-        )
+        cbar = fig.colorbar(im, ax=ax_heat, pad=0.02)
+        cbar.set_label(heatmap_metric, fontsize=8)
+        ax_heat.set_ylabel("Trial #", fontsize=10, fontweight="bold")
+    else:
+        ax_heat.text(0.5, 0.5, "No Trial Data Available", ha="center", va="center")
 
-        ax.axvline(0, color="red", linestyle="--", linewidth=1.5, label="Reward Onset")
-        ax.set_ylabel(m.replace("_smooth", ""), fontsize=11)
-        ax.grid(True, linestyle="--", alpha=0.4)
-        ax.legend(loc="upper right", fontsize=9)
+    # Stimulus Onset (0s) and Offset (stim_duration_sec) lines & shading
+    # ax_heat.axvspan(0, stim_duration_sec, color="#FFFFFF", alpha=0.15, zorder=2)
+    ax_heat.axvline(0, color="#FFFFFF", linestyle="--", linewidth=1.0, alpha=0.8, zorder=3)
+    ax_heat.axvline(stim_duration_sec, color="#FFFFFF", linestyle=":", linewidth=1.0, alpha=0.8, zorder=3)
+    ax_heat.set_title(f"Trial Heatmap ({heatmap_metric})", fontsize=10, fontweight="bold")
 
-    axes[-1].set_xlabel("Time relative to Reward Onset (s)", fontsize=11)
-    fig.suptitle(
-        f"Population Reward-Triggered PSTH — {condition_name}", fontsize=14
-    )
+    # -------------------------------------------------------------------------
+    # 2. Lower Panels: Mean +/- SEM Traces
+    # -------------------------------------------------------------------------
+    for m_idx, metric in enumerate(metrics):
+        ax = axes[m_idx + 1]
+
+        # Highlight stimulus pulse window
+        ax.axvspan(0, stim_duration_sec, color="#FF0000", alpha=0.1, zorder=1)
+        ax.axvline(0, color="#222222", linestyle="--", linewidth=1.0, alpha=0.8, zorder=2)
+        ax.axvline(stim_duration_sec, color="#222222", linestyle=":", linewidth=1.0, alpha=0.8, zorder=2)
+
+        m_matrix = psth_dict.get(metric, np.array([]))
+        if m_matrix.size > 0 and m_matrix.shape[0] > 0:
+            mean_trace = np.nanmean(m_matrix, axis=0)
+            sem_trace = np.nanstd(m_matrix, axis=0) / np.sqrt(m_matrix.shape[0])
+
+            legend_label = f"Rewards: {n_rewards if n_rewards > 0 else m_matrix.shape[0]}"
+            ax.plot(
+                time_vec,
+                mean_trace,
+                color=color,
+                linewidth=1.5,
+                label=legend_label,
+                zorder=3,
+            )
+            ax.fill_between(
+                time_vec,
+                mean_trace - sem_trace,
+                mean_trace + sem_trace,
+                color=color,
+                alpha=0.25,
+                edgecolor="none",
+                zorder=3,
+            )
+
+        ax.grid(True, linestyle=":", alpha=0.5)
+        ax.set_ylabel(metric, fontsize=10, fontweight="bold")
+        ax.legend(loc="upper right", fontsize=8, frameon=True)
+
+    axes[-1].set_xlabel("Time from Reward Onset (s)", fontsize=10)
+    fig.suptitle(f"Single Fly PSTH & Heatmap: {uid}", fontsize=12, fontweight="bold")
 
     return fig, axes
 
@@ -141,23 +125,28 @@ def plot_condition_psth_summary(
     datasets: List[List[Dict]],
     group_names: List[str],
     metrics: Optional[List[str]] = None,
-    window_sec: Tuple[float, float] = (-2.0, 4.0),
+    window_sec: Tuple[float, float] = (-2.0, 3.0),
+    stim_duration_sec: float = 1.0,  # 1-second LED duration
     fps: float = 60.0,
     colors: Optional[List[str]] = None,
-    title: str = "PSTH Summary",
+    title: str = "Mean velocities aligned to reward onset",
 ) -> Tuple[plt.Figure, np.ndarray]:
     """Plots PSTH summary subplots for multiple groups side-by-side with shared axes.
+
+    Marks both stimulus onset (t=0) and offset (t=stim_duration_sec).
 
     Parameters
     ----------
     datasets : List[List[Dict]]
         List of dataset lists, e.g. [dataset_gr5a_atr, dataset_gr5a_nr, dataset_gr43a_atr].
     group_names : List[str]
-        List of condition/genotype names corresponding to datasets, e.g. ["Gr5a_ATR", "Gr5a_NR", "Gr43a_ATR"].
+        List of condition/genotype names corresponding to datasets.
     metrics : Optional[List[str]]
         List of tracking metrics to plot per row (default: ["Vf_smooth", "Vr_abs"]).
     window_sec : Tuple[float, float]
-        Time window around stimulus/1st reward onset in seconds (pre, post).
+        Time window around 1st reward onset in seconds (pre, post).
+    stim_duration_sec : float
+        Duration of the LED stimulus pulse in seconds (default: 1.0).
     fps : float
         Frame rate in Hz (default: 60.0).
     colors : Optional[List[str]]
@@ -167,6 +156,7 @@ def plot_condition_psth_summary(
     """
     if metrics is None:
         metrics = ["Vf_smooth", "Vr_abs"]
+        
 
     if len(datasets) != len(group_names):
         raise ValueError("`datasets` and `group_names` must have the same length.")
@@ -178,23 +168,20 @@ def plot_condition_psth_summary(
         default_palette = ["#F16237", "#BA90EB", "#009E73", "#2B5C8F", "#E69F00"]
         colors = [default_palette[i % len(default_palette)] for i in range(n_cols)]
 
-    # Calculate frame window
     start_frame = int(window_sec[0] * fps)
     end_frame = int(window_sec[1] * fps)
     time_vec = np.linspace(window_sec[0], window_sec[1], end_frame - start_frame)
 
-    # Subplots sharing X-axis across all panels and Y-axis across each row
     fig, axes = plt.subplots(
         nrows=n_rows,
         ncols=n_cols,
-        figsize=(4.0 * n_cols, 3.2 * n_rows),
+        figsize=(4.2 * n_cols, 3.2 * n_rows),
         dpi=300,
         sharex=True,
         sharey="row",
         layout="constrained",
     )
 
-    # Ensure axes is 2D numpy array [nrows, ncols]
     if n_rows == 1 and n_cols == 1:
         axes_grid = np.array([[axes]])
     elif n_rows == 1:
@@ -204,8 +191,9 @@ def plot_condition_psth_summary(
     else:
         axes_grid = axes
 
-    # Iterate through each group (columns) and metric (rows)
     for col_idx, (group_ds, group_label, color) in enumerate(zip(datasets, group_names, colors)):
+        total_rewards = sum(ds.get("n_rewards", 0) for ds in group_ds)
+
         for row_idx, metric in enumerate(metrics):
             ax = axes_grid[row_idx, col_idx]
             psth_traces = []
@@ -223,17 +211,27 @@ def plot_condition_psth_summary(
                 if idx_start >= 0 and idx_end <= len(df_track):
                     psth_traces.append(df_track[metric].values[idx_start:idx_end])
 
+            # 1. Highlight the active stimulus pulse window (0s to 1s)
+            ax.axvspan(0, stim_duration_sec, color="#FF0000", alpha=0.1, zorder=1)
+
+            # 2. Add onset (t=0) and offset (t=stim_duration_sec) lines
+            ax.axvline(0, color="#222222", linestyle="--", linewidth=1.0, alpha=0.8, zorder=2)
+            ax.axvline(stim_duration_sec, color="#222222", linestyle=":", linewidth=1.0, alpha=0.8, zorder=2)
+
             if psth_traces:
                 psth_matrix = np.array(psth_traces)
                 mean_trace = np.nanmean(psth_matrix, axis=0)
                 sem_trace = np.nanstd(psth_matrix, axis=0) / np.sqrt(len(psth_traces))
+
+                legend_label = f"n = {len(psth_traces)} flies\nn_rewards = {total_rewards}"
 
                 ax.plot(
                     time_vec,
                     mean_trace,
                     color=color,
                     linewidth=1.5,
-                    label=f"n = {len(psth_traces)}",
+                    label=legend_label,
+                    zorder=3,
                 )
                 ax.fill_between(
                     time_vec,
@@ -242,10 +240,9 @@ def plot_condition_psth_summary(
                     color=color,
                     alpha=0.25,
                     edgecolor="none",
+                    zorder=3,
                 )
 
-            # Visual embellishments
-            ax.axvline(0, color="#444444", linestyle="--", linewidth=1.0, alpha=0.7)
             ax.grid(True, linestyle=":", alpha=0.5)
 
             if row_idx == 0:
@@ -253,9 +250,10 @@ def plot_condition_psth_summary(
             if row_idx == n_rows - 1:
                 ax.set_xlabel("Time from 1st Reward (s)", fontsize=10)
             if col_idx == 0:
-                ax.set_ylabel(metric, fontsize=10, fontweight="bold")
+                ax.set_ylabel(f"Mean {metric}", fontsize=10, fontweight="bold")
 
             ax.legend(loc="upper right", fontsize=8, frameon=True)
 
     fig.suptitle(title, fontsize=12, fontweight="bold")
     return fig, axes
+

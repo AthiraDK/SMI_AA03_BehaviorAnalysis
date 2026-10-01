@@ -1,9 +1,9 @@
-
 from typing import Dict, List, Optional, Tuple
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
-
+import pandas as pd
+import seaborn as sns
 
 
 def plot_single_fly_trajectory(
@@ -13,30 +13,12 @@ def plot_single_fly_trajectory(
     x_col: str = "X",
     y_col: str = "Y",
 ) -> Tuple[plt.Figure, plt.Axes]:
-    """Plots baseline, active reward, and extinction spatial trajectories for a single fly record.
-
-    Parameters
-    ----------
-    ds : Dict
-        Dictionary element from your `dataset` list.
-    arena_r : float
-        Radius of circular arena boundary in mm.
-    fps : float
-        Tracking acquisition rate in Hz (default 60.0).
-    """
+    """Plots baseline, active reward, and extinction trajectories for a single fly record."""
     df_track = ds["df_track"]
+    df_blocks = ds.get("df_blocks", None)
 
-    # Handle column naming variations safely
-    col_x = (
-        x_col
-        if x_col in df_track.columns
-        else ("x_mm" if "x_mm" in df_track.columns else "X")
-    )
-    col_y = (
-        y_col
-        if y_col in df_track.columns
-        else ("y_mm" if "y_mm" in df_track.columns else "Y")
-    )
+    col_x = x_col if x_col in df_track.columns else ("x_mm" if "x_mm" in df_track.columns else "X")
+    col_y = y_col if y_col in df_track.columns else ("y_mm" if "y_mm" in df_track.columns else "Y")
 
     x = df_track[col_x].values
     y = df_track[col_y].values
@@ -44,9 +26,24 @@ def plot_single_fly_trajectory(
     f_idx = ds.get("first_reward_idx", None)
     l_idx = ds.get("last_reward_idx", None)
 
+    # Use exact stimulus blocks timeticks if present
+    if df_blocks is not None and len(df_blocks) > 0:
+        first_onset_tick = df_blocks.iloc[0]["onset_timetick"]
+        last_offset_tick = df_blocks.iloc[-1].get(
+            "offset_timetick", df_blocks.iloc[-1]["onset_timetick"]
+        )
+
+        f_match = df_track[df_track["timetick"] == first_onset_tick] if "timetick" in df_track.columns else pd.DataFrame()
+        l_match = df_track[df_track["timetick"] == last_offset_tick] if "timetick" in df_track.columns else pd.DataFrame()
+
+        if not f_match.empty:
+            f_idx = f_match.index[0]
+        if not l_match.empty:
+            l_idx = l_match.index[-1] + 1  # Include final frame offset
+
     fig, ax = plt.subplots(figsize=(7, 7), dpi=300, layout="constrained")
 
-    # 1. Full Path (Baseline / Extinction / Overall)
+    # 1. Full Path (Background)
     ax.plot(
         x,
         y,
@@ -56,7 +53,7 @@ def plot_single_fly_trajectory(
         label="Path (Non-Active)",
     )
 
-    # 2. Overlay Active Reward Path
+    # 2. Active Reward Path (1st onset to last offset)
     if f_idx is not None and l_idx is not None and f_idx < l_idx:
         ax.plot(
             x[f_idx:l_idx],
@@ -67,8 +64,9 @@ def plot_single_fly_trajectory(
             label="Active Reward Epoch",
         )
         t0_min = f_idx / (fps * 60.0)
+        active_dur_sec = (l_idx - f_idx) / fps
         title_suffix = (
-            f"n_rewards = {ds.get('n_rewards', 0)} | 1st reward @ {t0_min:.2f} min"
+            f"n_rewards = {ds.get('n_rewards', 0)} | 1st rew @ {t0_min:.2f} min | Active Dur: {active_dur_sec:.1f}s"
         )
     else:
         title_suffix = f"n_rewards = {ds.get('n_rewards', 0)} (No rewards triggered)"
@@ -77,8 +75,6 @@ def plot_single_fly_trajectory(
     zone_x = ds.get("zone_X", 0.0)
     zone_y = ds.get("zone_Y", 0.0)
     zone_r = ds.get("zone_r", 3.0)
-
-    print(zone_r, zone_x, zone_y)
 
     reward_zone = patches.Circle(
         (zone_x, zone_y),
@@ -109,10 +105,13 @@ def plot_single_fly_trajectory(
     ax.set_xlim([-arena_r - pad, arena_r + pad])
     ax.set_ylim([-arena_r - pad, arena_r + pad])
     ax.set_aspect("equal")
-    ax.axis("off")
+    ax.set_xticks([])
+    ax.set_yticks([])
+    for spine in ax.spines.values():
+        spine.set_visible(False)
 
     ax.set_title(
-        f"{ds['uid']}\n{title_suffix}", fontsize=11, pad=10, fontweight="bold"
+        f"{ds.get('uid', 'Fly')}\n{title_suffix}", fontsize=11, pad=10, fontweight="bold"
     )
     ax.legend(loc="lower right", fontsize=8, frameon=True)
 
@@ -123,19 +122,12 @@ def plot_multi_experiment_split_trajectories(
     dataset: List[Dict],
     arena_r: float = 45.0,
     fps: float = 60.0,
-    ten_min_frames: int = 36000,  # 10 mins at 60 fps
     x_col: str = "X",
     y_col: str = "Y",
     color_map: Optional[Dict[str, str]] = None,
     fig_title: Optional[str] = None,
 ) -> Tuple[plt.Figure, np.ndarray]:
-    """Plots split trajectory subplots for multiple experiments.
-
-    Rows represent individual experiments, while columns split trajectories into:
-    1. Pre-1st reward encounter ("Baseline")
-    2. Post 1st reward encounter up to 10 mins ("Stimulus")
-    3. After 10 mins ("Washout")
-    """
+    """Plots split trajectory subplots for multiple experiments."""
     if color_map is None:
         color_map = {
             "Baseline": "#BA90EB",
@@ -157,20 +149,19 @@ def plot_multi_experiment_split_trajectories(
         layout="constrained",
     )
 
-    # Ensure axes array is 2D if there is only 1 experiment
     if n_experiments == 1:
         axes = np.expand_dims(axes, axis=0)
 
     column_titles = [
         "Pre-1st Reward",
-        "Post-1st Reward (Up to 10m)",
-        "After 10m (No Reward)",
+        "Active Reward (1st to Last Offset)",
+        "Washout",
     ]
 
     for row_idx, ds in enumerate(dataset):
         df_track = ds["df_track"]
+        df_blocks = ds.get("df_blocks", None)
 
-        # Resolve column names dynamically
         col_x = x_col if x_col in df_track.columns else ("x_mm" if "x_mm" in df_track.columns else "X")
         col_y = y_col if y_col in df_track.columns else ("y_mm" if "y_mm" in df_track.columns else "Y")
 
@@ -178,28 +169,45 @@ def plot_multi_experiment_split_trajectories(
         y = df_track[col_y].values
         total_frames = len(x)
 
-        # Retrieve pre-calculated metadata & reward attributes
         uid = ds.get("uid", f"Fly_{row_idx}")
         n_rewards = ds.get("n_rewards", 0)
-        f_idx = ds.get("first_reward_idx", None)
 
-        # Calculate time of 1st reward encounter in minutes
+        f_idx = ds.get("first_reward_idx", None)
+        l_idx = ds.get("last_reward_idx", None)
+
+        # Precise slice bounds from stimulus block timeticks
+        if df_blocks is not None and len(df_blocks) > 0:
+            first_onset_tick = df_blocks.iloc[0]["onset_timetick"]
+            last_offset_tick = df_blocks.iloc[-1].get(
+                "offset_timetick", df_blocks.iloc[-1]["onset_timetick"]
+            )
+
+            f_match = df_track[df_track["timetick"] == first_onset_tick] if "timetick" in df_track.columns else pd.DataFrame()
+            l_match = df_track[df_track["timetick"] == last_offset_tick] if "timetick" in df_track.columns else pd.DataFrame()
+
+            if not f_match.empty:
+                f_idx = f_match.index[0]
+            if not l_match.empty:
+                l_idx = l_match.index[-1] + 1  # Include the full last reward offset frame
+
         if f_idx is not None:
             t_first_min = f_idx / (fps * 60.0)
-            reward_str = f"1st rew: {t_first_min:.2f} min"
+            reward_str = f"1st rew: {t_first_min:.2f} m"
         else:
-            f_idx = total_frames  # Fallback if no reward occurred
+            f_idx = total_frames
             reward_str = "No rewards"
 
-        # Define slice boundaries for the 3 time periods
-        slice_p1 = slice(0, f_idx)                                       # Baseline
-        slice_p2 = slice(f_idx, min(ten_min_frames, total_frames))      # Stimulus
-        slice_p3 = slice(ten_min_frames, total_frames) if total_frames > ten_min_frames else None  # Washout
+        if l_idx is None or l_idx < f_idx:
+            l_idx = f_idx
+
+        # Slice boundaries
+        slice_p1 = slice(0, f_idx)
+        slice_p2 = slice(f_idx, l_idx)
+        slice_p3 = slice(l_idx, total_frames) if l_idx < total_frames else None
 
         slices = [slice_p1, slice_p2, slice_p3]
         epoch_keys = ["Baseline", "Stimulus", "Washout"]
 
-        # Plot each period in its respective column
         for col_idx, (slc, epoch) in enumerate(zip(slices, epoch_keys)):
             ax = axes[row_idx, col_idx]
 
@@ -212,7 +220,6 @@ def plot_multi_experiment_split_trajectories(
                     alpha=0.85,
                 )
 
-            # Draw Reward Zone & Arena circles
             zone_x = ds.get("zone_X", 0.0)
             zone_y = ds.get("zone_Y", 0.0)
             zone_r = ds.get("zone_r", 3.0)
@@ -240,14 +247,16 @@ def plot_multi_experiment_split_trajectories(
             ax.add_patch(arena_boundary)
 
             ax.set_aspect("equal")
-            ax.axis("off")
-
-            # Set top row headers
+            ax.set_xticks([])
+            ax.set_yticks([])
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+            
             if row_idx == 0:
                 ax.set_title(column_titles[col_idx], fontsize=11, fontweight="bold", pad=10)
 
-        # Add Fly UID, total rewards, and 1st encounter time on the left side of each row
-        row_label = f"UID: {uid}\nRewards: {n_rewards}\n{reward_str}"
+        active_dur_sec = (l_idx - f_idx) / fps if (f_idx is not None and l_idx is not None) else 0.0
+        row_label = f"UID: {uid}\nRewards: {n_rewards}\n{reward_str}\nActive: {active_dur_sec:.1f}s"
         axes[row_idx, 0].set_ylabel(
             row_label, 
             fontsize=8, 
@@ -258,13 +267,11 @@ def plot_multi_experiment_split_trajectories(
             va="center"
         )
 
-    # Set arena plotting limits
     pad = 2.0
     for ax in axes.ravel():
         ax.set_xlim([-arena_r - pad, arena_r + pad])
         ax.set_ylim([-arena_r - pad, arena_r + pad])
 
-    # Add global figure title if provided
     if fig_title:
         fig.suptitle(fig_title, fontsize=13, fontweight="bold", y=1.02)
 
