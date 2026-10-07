@@ -9,9 +9,9 @@ from matplotlib.gridspec import GridSpec
 # CONFIGURATION & PARAMETERS
 # =========================================================================
 
-LOWRES_VIDEO_PATH = "/media/athira/Crucial_AA/Data_backup/LocalSearch_OptoCL/Gr5a_Gal4/20260927_173321_Gr5a_OptoCL_ATR/LowResVideo.avi"     # Path to 60 FPS low-res video
-HIGHRES_VIDEO_PATH = "/media/athira/Crucial_AA/Data_backup/LocalSearch_OptoCL/Gr5a_Gal4/20260927_173321_Gr5a_OptoCL_ATR/HighResVideo.avi"   # Path to 120 FPS high-res video
-OUTPUT_VIDEO_PATH = "annotated_4panel_3to4min.mp4"
+LOWRES_VIDEO_PATH = "/media/athira/Crucial_AA/Data_backup/LocalSearch_OptoCL/Gr5a_Gal4/20260927_214323_Gr5a_OptoCL_ATR/LowResVideo.avi"     # Path to 60 FPS low-res video
+HIGHRES_VIDEO_PATH = "/media/athira/Crucial_AA/Data_backup/LocalSearch_OptoCL/Gr5a_Gal4/20260927_214323_Gr5a_OptoCL_ATR/HighResVideo.avi"   # Path to 120 FPS high-res video
+OUTPUT_VIDEO_PATH = "annotated_4panel_3to5min.mp4"
 
 
 
@@ -48,8 +48,8 @@ def create_synchronized_animation():
     # -------------------------------------------------------------------------
     # 1. LOAD DATA & FILTER TIME WINDOW (180s - 240s)
     # -------------------------------------------------------------------------
-    df_proc = pd.read_csv("/home/athira/CF/PhD/Data/LocalSearch_OptoCL/Gr5a_Gal4/20260927_173321_Gr5a_OptoCL_ATR/ProcessedTracking.csv")
-    df_meta = pd.read_csv("/home/athira/CF/PhD/Data/LocalSearch_OptoCL/Gr5a_Gal4/20260927_173321_Gr5a_OptoCL_ATR/HighResMeta.csv")
+    df_proc = pd.read_csv("/home/athira/CF/PhD/Data/LocalSearch_OptoCL/Gr5a_Gal4/20260927_214323_Gr5a_OptoCL_ATR/ProcessedTracking.csv")
+    df_meta = pd.read_csv("/home/athira/CF/PhD/Data/LocalSearch_OptoCL/Gr5a_Gal4/20260927_214323_Gr5a_OptoCL_ATR/HighResMeta.csv")
 
     start_idx = int(START_TIME_SEC * SAMPLING_FPS)
     end_idx = int(END_TIME_SEC * SAMPLING_FPS)
