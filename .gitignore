@@ -1,6 +1,7 @@
 # ignore all .mat and .npy files 
 *.mat
 *.npy
+*.csv
 
 
 # ignore all data files except for .gitkeep
